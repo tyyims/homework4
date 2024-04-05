@@ -1,0 +1,216 @@
+---
+title: "Homework 3"
+subtitle: "Research Methods, Spring 2024"
+author: "Taeyoung Yim"
+format:
+  pdf:
+    output-file: "yim-t-hwk3-3"
+    output-ext:  "pdf"
+    header-includes:
+      - \usepackage{float}
+      - \floatplacement{table}{H}
+---
+
+```{r}
+#| include: false
+
+if (!require("pacman")) install.packages("pacman")
+pacman::p_load(tidyverse, ggplot2, dplyr, lubridate, readr, readxl, hrbrthemes, fixest,
+               scales, gganimate, gapminder, gifski, png, tufte, plotly, OECD,
+               ggrepel, survey, foreign, devtools, pdftools, kableExtra, modelsummary,
+               kableExtra)
+```
+
+```{r}
+#| include: false
+#| eval: true
+library(readr)
+library(dplyr)
+
+full.ma.data <- read_rds("data/output/full_ma_data.rds")
+contract.service.area <- read_rds("data/output/contract_service_area.rds")
+star.ratings <- read_rds("data/output/star_ratings.rds")
+ma.penetration.data <- read_rds("data/output/ma_penetration.rds")
+plan.premiums <- read_rds("data/output/plan_premiums.rds")
+risk.rebate.final <- read_rds("data/output/risk_rebate.rds")
+benchmark.final <- read_rds("data/output/ma_benchmark.rds") %>%
+  mutate(ssa=as.double(ssa))
+ffs.costs.final <- read_rds("data/output/ffs_costs.rds")
+
+final.data <- full.ma.data %>%
+  inner_join(contract.service.area %>% 
+               select(contractid, fips, year), 
+             by=c("contractid", "fips", "year")) %>%
+  filter(!state %in% c("VI","PR","MP","GU","AS","") &
+           snp == "No" &
+           (planid < 800 | planid >= 900) &
+           !is.na(planid) & !is.na(fips))
+
+final.data <- final.data %>%
+  left_join( star.ratings %>%
+               select(-contract_name, -org_type, -org_marketing), 
+             by=c("contractid", "year")) %>%
+  left_join( ma.penetration.data %>% ungroup() %>% select(-ssa) %>%
+               rename(state_long=state, county_long=county), 
+             by=c("fips", "year"))
+
+# calculate star rating (Part C rating if plan doesn't offer part D, otherwise Part D rating if available)
+final.data <- final.data %>% ungroup() %>%
+  mutate(Star_Rating = 
+           case_when(
+             partd == "No" ~ partc_score,
+             partd == "Yes" & is.na(partcd_score) ~ partc_score,
+             partd == "Yes" & !is.na(partcd_score) ~ partcd_score,
+             TRUE ~ NA_real_
+           ))
+
+
+final.state <- final.data %>% 
+  group_by(state) %>% 
+  summarize(state_name=last(state_long, na.rm=TRUE))
+
+final.data <- final.data %>%
+  left_join(final.state,
+            by=c("state"))
+
+final.data <- final.data %>%
+  left_join( plan.premiums,
+             by=c("contractid","planid","state_name"="state","county","year")) %>%
+  left_join( risk.rebate.final %>%
+               select(-contract_name, -plan_type),
+             by=c("contractid","planid","year")) %>%
+  left_join( benchmark.final,
+             by=c("ssa","year"))
+
+
+# calculate relevant benchmark rate based on star rating
+final.data <- final.data %>% ungroup() %>%
+  mutate(ma_rate =
+           case_when(
+             year<2012 ~ risk_ab,
+             year>=2012 & year<2015 & Star_Rating == 5 ~ risk_star5,
+             year>=2012 & year<2015 & Star_Rating == 4.5 ~ risk_star45,
+             year>=2012 & year<2015 & Star_Rating == 4 ~ risk_star4,
+             year>=2012 & year<2015 & Star_Rating == 3.5 ~ risk_star35,
+             year>=2012 & year<2015 & Star_Rating == 3 ~ risk_star3,
+             year>=2012 & year<2015 & Star_Rating < 3 ~ risk_star25,
+             year>=2012 & year<2015 & is.na(Star_Rating) ~ risk_star35,
+             year>=2015 & Star_Rating >= 4 ~ risk_bonus5,
+             year>=2015 & Star_Rating < 4 ~ risk_bonus0,
+             year>=2015 & is.na(Star_Rating) ~ risk_bonus35,
+             TRUE ~ NA_real_
+           ))
+
+# final premium and bid variables
+final.data <- final.data %>%
+  mutate(basic_premium=
+           case_when(
+             rebate_partc>0 ~ 0,
+             partd == "No" & !is.na(premium) & is.na(premium_partc) ~ premium,
+             TRUE ~ premium_partc
+           ),
+         bid=
+           case_when(
+             rebate_partc == 0 & basic_premium > 0 ~ (payment_partc + basic_premium)/riskscore_partc,
+             rebate_partc > 0 | basic_premium == 0 ~ payment_partc/riskscore_partc,
+             TRUE ~ NA_real_
+           ))
+
+# incorporate ffs cost data by ssa
+final.data <- final.data %>%
+  left_join( ffs.costs.final %>%
+               select(-state), 
+             by=c("ssa","year")) %>%
+  mutate(avg_ffscost = case_when(
+    parta_enroll==0 & partb_enroll==0 ~ 0,
+    parta_enroll==0 & partb_enroll>0 ~ partb_reimb/partb_enroll,
+    parta_enroll>0 & partb_enroll==0 ~ parta_reimb/parta_enroll,
+    parta_enroll>0 & partb_enroll>0 ~ (parta_reimb/parta_enroll) + (partb_reimb/partb_enroll),
+    TRUE ~ NA_real_
+  ))
+
+# save final dataset
+write_rds(final.data,"data/output/final_ma_data.rds")
+
+```
+
+\newpage
+# Summarize the Data
+\vspace{.2in}
+\noindent 1. Remove all SNPs, 800-series plans, and prescription drug only plans (i.e., plans that do not offer Part C benefits). Provide a box and whisker plot showing the distribution of plan counts by county over time. Do you think that the number of plans is sufficient, too few, or too many?<br>
+```{r,  echo = FALSE}
+
+```
+
+\newpage
+\vspace{.2in}
+\noindent 2. Provide bar graphs showing the distribution of star ratings in 2010, 2012, and 2015. How has this distribution changed over time?<br>
+```{r,  echo = FALSE}
+
+```
+
+\newpage
+\vspace{.2in}
+\noindent 3.Plot the average benchmark payment over time from 2010 through 2015. How much has the average benchmark payment risen over the years?.<br>
+```{r,  echo = FALSE}
+
+```
+
+\newpage
+\vspace{.2in}
+\noindent 4.Plot the average share of Medicare Advantage (relative to all Medicare eligibles) over time from 2010 through 2015. Has Medicare Advantage increased or decreased in popularity? How does this share correlate with benchmark payments?<br>
+```{r,  echo = FALSE}
+
+
+```
+
+\newpage
+# Estimate ATEs
+For the rest of the assignment, we’ll use a regression discontinuity design to estimate the average treatment effect from receiving a marginally higher rating. We’ll focus only on 2010.
+\vspace{.2in}
+\noindent 5.Calculate the running variable underlying the star rating. Provide a table showing the number of plans that are rounded up into a 3-star, 3.5-star, 4-star, 4.5-star, and 5-star rating.<br>
+```{r, echo = FALSE}
+
+```
+\newpage
+
+\vspace{.2in}
+\noindent 6.Using the RD estimator with a bandwidth of 0.125, provide an estimate of the effect of receiving a 3-star versus a 2.5 star rating on enrollments. Repeat the exercise to estimate the effects at 3.5 stars, and summarize your results in a table..<br>
+
+```{r, echo=FALSE}
+
+```
+
+The coefficient estimate of -0.809 for ln_price_2012 (p < 0.001) indicates that there is a substantial negative correlation between cigarette sales and pricing. This means that reduced sales correlated to increased cigarette prices. 
+
+\newpage
+\vspace{.2in}
+\noindent 7.Repeat your results for bandwidhts of 0.1, 0.12, 0.13, 0.14, and 0.15 (again for 3 and 3.5 stars). Show all of the results in a graph. How sensitive are your findings to the choice of bandwidth?<br>
+
+```{r, echo=FALSE}
+
+```
+
+
+\newpage
+\vspace{.2in}
+\noindent 8.Examine (graphically) whether contracts appear to manipulate the running variable. In other words, look at the distribution of the running variable before and after the relevent threshold values. What do you find?.<br>
+```{r,  echo = FALSE}
+
+
+```
+
+\newpage
+\vspace{.2in}
+\noindent 9.Similar to question 4, examine whether plans just above the threshold values have different characteristics than contracts just below the threshold values. Use HMO and Part D status as your plan characteristics.<br>
+```{r,  echo = FALSE}
+
+
+```
+
+\newpage
+\vspace{.2in}
+\noindent 10.Summarize your findings from 5-9. What is the effect of increasing a star rating on enrollments? Briefly explain your results.<br>
+```{r,  echo = FALSE}
+
+```
