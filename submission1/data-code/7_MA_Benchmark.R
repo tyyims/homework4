@@ -1,13 +1,17 @@
 ##############################################################################
 ## Read in MA Benchmark Rates (apply to each county) */
 ##############################################################################
-library(readr)
-library(dplyr)
-library(tidyr)
-library(readxl)
-library(data.table)
-library(base)
-library(stringr)
+if (!require("pacman")) install.packages("pacman")
+pacman::p_load(tidyverse, ggplot2, dplyr, lubridate, readr, readxl, hrbrthemes, fixest,
+               scales, gganimate, gapminder, gifski, png, tufte, plotly, OECD,
+               ggrepel, survey, foreign, devtools, pdftools, kableExtra, modelsummary,
+               kableExtra, stringr, data.table, gdata)
+## Assign yearly file paths
+
+##############################################################################
+## Read in MA Benchmark Rates (apply to each county) */
+##############################################################################
+
 ## Assign yearly file paths
 
 bench.path.2010=paste0("data/input/ma-benchmarks/ma-benchmarks/ratebook2010/CountyRate2010.csv")
@@ -32,7 +36,7 @@ for (y in 2010:2011){
                                   "esrd_ab","risk_ab"))
   
   bench.data = bench.data %>%
-    select(ssa,aged_parta,aged_partb)
+    select(ssa,aged_parta,aged_partb,risk_ab)
   
   ## create missing variables for future rbind with other years
   bench.data = bench.data %>%
@@ -83,6 +87,6 @@ bench.data.2015 = bench.data.2015 %>%
 
 
 benchmark.final=rbind(
-                      bench.data.2010, bench.data.2011,bench.data.2012,
+                      bench.data.2010, bench.data.2011, bench.data.2012,
                       bench.data.2013, bench.data.2014, bench.data.2015)
 write_rds(benchmark.final,"data/output/ma_benchmark.rds")

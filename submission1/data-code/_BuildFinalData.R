@@ -15,16 +15,16 @@ pacman::p_load(tidyverse, ggplot2, dplyr, lubridate, stringr, readxl, data.table
 
 # Call individual scripts -------------------------------------------------
 
-source("data-code/1_Plan_Data.R")
-source("data-code/2_Plan_Characteristics.R")
-source("data-code/3_Service_Areas.R")
-source("data-code/4_Penetration_Files.R")
-source("data-code/5_Star_Ratings.R")
-source("data-code/6_Risk_Rebates.R")
-#source("data-code/7_MA_Benchmark.R")
-#source("data-code/8_FFS_Costs.R")
+source("submission1/data-code/1_Plan_Data.R")
+source("submission1/data-code/2_Plan_Characteristics.R")
+source("submission1/data-code/3_Service_Areas.R")
+source("submission1/data-code/4_Penetration_Files.R")
+source("submission1/data-code/5_Star_Ratings.R")
+source("submission1/data-code/6_Risk_Rebates.R")
+source("submission1/data-code/7_MA_Benchmark.R")
+source("submission1/data-code/8_FFS_Costs.R")
 
-library(readr)
+
 
 # Tidy data ---------------------------------------------------------------
 full.ma.data <- read_rds("data/output/full_ma_data.rds")
@@ -33,9 +33,9 @@ star.ratings <- read_rds("data/output/star_ratings.rds")
 ma.penetration.data <- read_rds("data/output/ma_penetration.rds")
 plan.premiums <- read_rds("data/output/plan_premiums.rds")
 risk.rebate.final <- read_rds("data/output/risk_rebate.rds")
-#benchmark.final <- read_rds("data/output/ma_benchmark.rds") %>%
-#  mutate(ssa=as.double(ssa))
-#ffs.costs.final <- read_rds("data/output/ffs_costs.rds")
+benchmark.final <- read_rds("data/output/ma_benchmark.rds") %>%
+  mutate(ssa=as.double(ssa))
+ffs.costs.final <- read_rds("data/output/ffs_costs.rds")
 
 final.data <- full.ma.data %>%
   inner_join(contract.service.area %>% 
