@@ -120,7 +120,7 @@ medicare_eligibles <- filtered_data %>%
 
 # Calculate the total enrollment in Medicare Advantage plans for each year
 medicare_advantage_enrollment <- filtered_data %>%
-  filter(partc_enroll > 0) %>%
+  filter(avg_ffscost > 0) %>%
   group_by(year) %>%
   summarise(total_medicare_advantage_enrollment = sum(partc_enroll))
 
@@ -140,8 +140,9 @@ ggplot(merged_data, aes(x = year, y = average_share_medicare_advantage)) +
   theme_minimal()
 
 # Correlation with benchmark payments
-correlation <- cor(merged_data$average_share_medicare_advantage, merged_data$total_medicare_advantage_enrollment)
-correlation
+
+#correlation <- cor(merged_data$average_share_medicare_advantage, merged_data$total_medicare_advantage_enrollment)
+#correlation
 
 ```
 
@@ -151,24 +152,147 @@ For the rest of the assignment, we’ll use a regression discontinuity design to
 \vspace{.2in}
 \noindent 5.Calculate the running variable underlying the star rating. Provide a table showing the number of plans that are rounded up into a 3-star, 3.5-star, 4-star, 4.5-star, and 5-star rating.<br>
 ```{r, echo = FALSE}
+library(dplyr)
+
+# Filter the data for the year 2010
+data_2010 <- final.data %>%
+  filter(year == 2010)
+
+# Calculate the running variable (star rating rounded up)
+data_2010 <- data_2010 %>%
+  mutate(running_variable = ceiling(mean_risk))
+
+# Create a table showing the number of plans rounded up into each star rating category
+star_ratings_table <- data_2010 %>%
+  group_by(running_variable) %>%
+  summarise(num_plans = n())
+
+star_ratings_table
 
 ```
+
 \newpage
 
 \vspace{.2in}
-\noindent 6.Using the RD estimator with a bandwidth of 0.125, provide an estimate of the effect of receiving a 3-star versus a 2.5 star rating on enrollments. Repeat the exercise to estimate the effects at 3.5 stars, and summarize your results in a table..<br>
+\noindent 6.Using the RD estimator with a bandwidth of 0.125, provide an estimate of the effect of receiving a 3-star versus a 2.5 star rating on enrollments. Repeat the exercise to estimate the effects at 3.5 stars, and summarize your results in a table.<br>
 
 ```{r, echo=FALSE}
+library(dplyr)
+
+# Filter the data for the year 2010
+data_2010 <- final.data %>%
+  filter(year == 2010)
+
+# Calculate the running variable (star rating rounded up)
+data_2010 <- data_2010 %>%
+  mutate(running_variable = ceiling(mean_risk))
+
+# Define bandwidth
+bandwidth <- 0.125
+
+# Function to estimate the RD effect
+estimate_RD_effect <- function(data, cutoff) {
+  lower_bound <- cutoff - bandwidth / 2
+  upper_bound <- cutoff + bandwidth / 2
+  
+  treated_group <- data %>%
+    filter(running_variable >= cutoff & running_variable <= upper_bound)
+  
+  control_group <- data %>%
+    filter(running_variable >= lower_bound & running_variable < cutoff)
+  
+  # Calculate average enrollment for treated and control groups
+  avg_enrollment_treated <- mean(treated_group$avg_enrollment)
+  avg_enrollment_control <- mean(control_group$avg_enrollment)
+  
+  # Estimate RD effect
+  rd_effect <- avg_enrollment_treated - avg_enrollment_control
+  
+  return(rd_effect)
+}
+
+# Calculate RD effect for 3-star versus 2.5-star
+rd_effect_3_vs_2.5 <- estimate_RD_effect(data_2010, 3)
+
+# Calculate RD effect for 3.5-star versus 3-star
+rd_effect_3.5_vs_3 <- estimate_RD_effect(data_2010, 3.5)
+
+# Summarize results in a table
+results_table <- data.frame(
+  Rating = c("3-star vs 2.5-star", "3.5-star vs 3-star"),
+  RD_Effect = c(rd_effect_3_vs_2.5, rd_effect_3.5_vs_3)
+)
+
+results_table
 
 ```
 
-The coefficient estimate of -0.809 for ln_price_2012 (p < 0.001) indicates that there is a substantial negative correlation between cigarette sales and pricing. This means that reduced sales correlated to increased cigarette prices. 
 
 \newpage
 \vspace{.2in}
 \noindent 7.Repeat your results for bandwidhts of 0.1, 0.12, 0.13, 0.14, and 0.15 (again for 3 and 3.5 stars). Show all of the results in a graph. How sensitive are your findings to the choice of bandwidth?<br>
 
 ```{r, echo=FALSE}
+library(dplyr)
+library(ggplot2)
+
+# Filter the data for the year 2010
+data_2010 <- final.data %>%
+  filter(year == 2010)
+
+# Calculate the running variable (star rating rounded up)
+data_2010 <- data_2010 %>%
+  mutate(running_variable = ceiling(mean_risk))
+
+# Define bandwidths
+bandwidths <- c(0.1, 0.12, 0.13, 0.14, 0.15)
+
+# Function to estimate the RD effect for a given bandwidth
+estimate_RD_effect <- function(data, cutoff, bandwidth) {
+  lower_bound <- cutoff - bandwidth / 2
+  upper_bound <- cutoff + bandwidth / 2
+  
+  treated_group <- data %>%
+    filter(running_variable >= cutoff & running_variable <= upper_bound)
+  
+  control_group <- data %>%
+    filter(running_variable >= lower_bound & running_variable < cutoff)
+  
+  # Calculate average enrollment for treated and control groups
+  avg_enrollment_treated <- mean(treated_group$avg_enrollment)
+  avg_enrollment_control <- mean(control_group$avg_enrollment)
+  
+  # Estimate RD effect
+  rd_effect <- avg_enrollment_treated - avg_enrollment_control
+  
+  return(rd_effect)
+}
+
+# Calculate RD effects for different bandwidths and star rating comparisons
+results <- data.frame(
+  Bandwidth = numeric(),
+  Rating = character(),
+  RD_Effect = numeric()
+)
+
+for (bandwidth in bandwidths) {
+  rd_effect_3_vs_2.5 <- estimate_RD_effect(data_2010, 3, bandwidth)
+  rd_effect_3.5_vs_3 <- estimate_RD_effect(data_2010, 3.5, bandwidth)
+  
+  results <- rbind(results, data.frame(
+    Bandwidth = rep(bandwidth, 2),
+    Rating = c("3-star vs 2.5-star", "3.5-star vs 3-star"),
+    RD_Effect = c(rd_effect_3_vs_2.5, rd_effect_3.5_vs_3)
+  ))
+}
+
+# Visualize results in a graph
+ggplot(results, aes(x = Bandwidth, y = RD_Effect, color = Rating)) +
+  geom_line() +
+  geom_point() +
+  labs(x = "Bandwidth", y = "RD Effect",
+       title = "RD Effects for Different Bandwidths") +
+  theme_minimal()
 
 ```
 
@@ -177,6 +301,34 @@ The coefficient estimate of -0.809 for ln_price_2012 (p < 0.001) indicates that 
 \vspace{.2in}
 \noindent 8.Examine (graphically) whether contracts appear to manipulate the running variable. In other words, look at the distribution of the running variable before and after the relevent threshold values. What do you find?.<br>
 ```{r,  echo = FALSE}
+library(ggplot2)
+
+# Filter the data for the year 2010
+data_2010 <- final.data %>%
+  filter(year == 2010)
+
+# Calculate the running variable (star rating rounded up)
+data_2010 <- data_2010 %>%
+  mutate(running_variable = ceiling(mean_risk))
+
+# Function to create a density plot for the running variable around the threshold value
+plot_running_variable_density <- function(data, threshold) {
+  ggplot(data, aes(x = running_variable)) +
+    geom_density(fill = "skyblue", alpha = 0.6) +
+    geom_vline(xintercept = threshold, color = "red", linetype = "dashed") +
+    labs(x = "Running Variable", y = "Density",
+         title = paste("Density Plot of Running Variable around", threshold, "Star Rating Threshold")) +
+    theme_minimal()
+}
+
+# Plot density around 3-star threshold
+plot_3_star_density <- plot_running_variable_density(data_2010, 3)
+
+# Plot density around 3.5-star threshold
+plot_3.5_star_density <- plot_running_variable_density(data_2010, 3.5)
+
+# Combine plots
+plot_grid(plot_3_star_density, plot_3.5_star_density, ncol = 2)
 
 
 ```
@@ -186,6 +338,50 @@ The coefficient estimate of -0.809 for ln_price_2012 (p < 0.001) indicates that 
 \noindent 9.Similar to question 4, examine whether plans just above the threshold values have different characteristics than contracts just below the threshold values. Use HMO and Part D status as your plan characteristics.<br>
 ```{r,  echo = FALSE}
 
+library(dplyr)
+
+# Filter the data for the year 2010
+data_2010 <- final.data %>%
+  filter(year == 2010)
+
+# Calculate the running variable (star rating rounded up)
+data_2010 <- data_2010 %>%
+  mutate(running_variable = ceiling(mean_risk))
+
+# Define a function to compare plan characteristics
+compare_plan_characteristics <- function(data, threshold) {
+  above_threshold <- data %>%
+    filter(running_variable > threshold)
+  
+  below_threshold <- data %>%
+    filter(running_variable < threshold)
+  
+  # Calculate the proportion of HMO and Part D plans for each group
+  above_threshold_hmo_prop <- mean(above_threshold$org_type == "HMO")
+  above_threshold_partd_prop <- mean(above_threshold$partd == "Yes")
+  
+  below_threshold_hmo_prop <- mean(below_threshold$org_type == "HMO")
+  below_threshold_partd_prop <- mean(below_threshold$partd == "Yes")
+  
+  # Create a data frame to store the results
+  comparison_results <- data.frame(
+    Threshold = threshold,
+    Plan_Type = c("HMO", "Part D"),
+    Above_Threshold_Proportion = c(above_threshold_hmo_prop, above_threshold_partd_prop),
+    Below_Threshold_Proportion = c(below_threshold_hmo_prop, below_threshold_partd_prop)
+  )
+  
+  return(comparison_results)
+}
+
+# Set threshold values (e.g., 3-star and 3.5-star)
+thresholds <- c(3, 3.5)
+
+# Compare plan characteristics for each threshold value
+comparison_results <- purrr::map_dfr(thresholds, ~compare_plan_characteristics(data_2010, .x))
+
+# Print comparison results
+print(comparison_results)
 
 ```
 
