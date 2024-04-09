@@ -1,277 +1,65 @@
 ##############################################################################
 ## Read in MA star rating data 
 ##############################################################################
-source("data-code/rating_variables.R")
+source("submission1/data-code/rating_variables.R")
 
 ## Assign yearly datasets and clean star rating information
+if (!require("pacman")) install.packages("pacman")
+pacman::p_load(tidyverse, ggplot2, dplyr, lubridate, stringr, readxl, data.table, gdata, readr)
+## 2008
+ma.path.2008a <- paste0("data/input/ma-star-ratings/2008/2008_Part_C_Report_Card_Master_Table_2009_11_30_stars.csv")
+star.data.2008a <- read_csv(ma.path.2008a,
+                         skip=4,
+                         col_names=rating.vars.2008)
 
-library(readr)
-library(dplyr)
-library(tidyr)
-library(readxl)
-library(data.table)
-rating.vars.2010=c("contractid",
-                   "org_type",
-                   "contract_name",
-                   "org_marketing",
-                   "breastcancer_screen",
-                   "rectalcancer_screen",
-                   "cv_diab_cholscreen",
-                   "glaucoma_test",
-                   "monitoring",
-                   "flu_vaccine",
-                   "pn_vaccine",
-                   "physical_health",
-                   "mental_health",
-                   "osteo_test",
-                   "physical_monitor",
-                   "primaryaccess",
-                   "osteo_manage",
-                   "diab_healthy",
-                   "bloodpressure",
-                   "ra_manage",
-                   "copd_test",
-                   "bladder",
-                   "falling",
-                   "nodelays",
-                   "doctor_communicate",                   
-                   "carequickly",
-                   "customer_service",                   
-                   "overallrating_care",
-                   "overallrating_plan",
-                   "complaints_plan",
-                   "appeals_timely",
-                   "appeals_review",
-                   "leave_plan",
-                   "audit_problems",
-                   "hold_times",
-                   "info_accuracy",
-                   "ttyt_available")
+ma.path.2008b <- paste0("data/input/ma-star-ratings/2008/2008_Part_C_Report_Card_Master_Table_2009_11_30_domain.csv")
+star.data.2008b <- read_csv(ma.path.2008b,
+                         skip=2,
+                         col_names=c("contractid","contract_name","healthy","getting_care",
+                                     "timely_care","chronic","appeal","new_contract"))
+star.data.2008b <- as_tibble(star.data.2008b) %>%
+  mutate(new_contract=replace(new_contract,is.na(new_contract),0)) %>%
+  select("contractid","new_contract")
+
+star.data.2008 <- (star.data.2008a %>% select(-new_contract)) %>%
+  left_join(star.data.2008b, by=c("contractid")) %>%
+  mutate(year=2008)
 
 
-## 2011 Rating variable names
-rating.vars.2011=c("contractid",
-                   "org_type",
-                   "contract_name",
-                   "org_marketing",
-                   "breastcancer_screen",
-                   "rectalcancer_screen",
-                   "cv_cholscreen",
-                   "diab_cholscreen",
-                   "glaucoma_test",
-                   "monitoring",
-                   "flu_vaccine",
-                   "pn_vaccine",
-                   "physical_health",
-                   "mental_health",
-                   "osteo_test",
-                   "physical_monitor",
-                   "primaryaccess",
-                   "osteo_manage",
-                   "diabetes_eye",
-                   "diabetes_kidney",
-                   "diabetes_bloodsugar",
-                   "diabetes_chol",
-                   "bloodpressure",
-                   "ra_manage",
-                   "copd_test",
-                   "bladder",
-                   "falling",
-                   "nodelays",
-                   "doctor_communicate",
-                   "carequickly",
-                   "customer_service",
-                   "overallrating_care",
-                   "overallrating_plan",
-                   "complaints_plan",
-                   "appeals_timely",
-                   "appeals_review",
-                   "corrective_action",
-                   "hold_times",
-                   "info_accuracy",
-                   "ttyt_available")
-                   
+## 2009
+ma.path.2009a <- paste0("data/input/ma-star-ratings/2009/2009_Part_C_Report_Card_Master_Table_2009_11_30_stars.csv")
+star.data.2009a <- read_csv(ma.path.2009a,
+                         skip=4,
+                         col_names=rating.vars.2009)
+star.data.2009a <- as_tibble(sapply(star.data.2009a,plyr::mapvalues,
+                                 from=c("1 out of 5 stars","2 out of 5 stars","3 out of 5 stars",
+                                        "4 out of 5 stars","5 stars"), 
+                                 to=c("1","2","3","4","5")))
+star.data.2009a <- star.data.2009a %>%
+  mutate_at(vars(-one_of("contractid","org_type","contract_name","org_marketing")),
+            as.numeric)
 
-## 2012 Rating variable names
-rating.vars.2012=c("contractid",
-                   "org_type",
-                   "org_parent",
-                   "org_marketing",
-                   "breastcancer_screen",
-                  "rectalcancer_screen",
-                  "cv_cholscreen",
-                  "diab_cholscreen",
-                  "glaucoma_test",
-                  "flu_vaccine",
-                  "pn_vaccine",
-                  "physical_health",
-                  "mental_health",
-                  "physical_monitor",
-                  "primaryaccess",
-                  "bmi_assess",
-                  "older_medication",
-                  "older_function",
-                  "older_pain",
-                  "osteo_manage",
-                  "diabetes_eye",
-                  "diabetes_kidney",
-                  "diabetes_bloodsugar",
-                  "diabetes_chol",
-                  "bloodpressure",
-                  "ra_manage",
-                  "bladder",
-                  "falling",
-                  "readmissions",
-                  "nodelays",
-                  "carequickly",
-                  "customer_service",
-                  "overallrating_care",
-                  "overallrating_plan",
-                  "complaints_plan",
-                  "access_problems",
-                  "leave_plan",
-                  "appeals_timely",
-                  "appeals_review",
-                  "ttyt_available")
-  
-  
-## 2013 Rating variable names
-rating.vars.2013=c("contractid",
-                   "org_type",
-                   "contract_name",
-                   "org_marketing",
-                   "org_parent",
-                  "breastcancer_screen",
-                  "rectalcancer_screen",
-                  "cv_cholscreen",
-                  "diab_cholscreen",
-                  "glaucoma_test",
-                  "flu_vaccine",
-                  "physical_health",
-                  "mental_health",
-                  "physical_monitor",
-                  "bmi_assess",
-                  "older_medication",
-                  "older_function",
-                  "older_pain",
-                  "osteo_manage",
-                  "diabetes_eye",
-                  "diabetes_kidney",
-                  "diabetes_bloodsugar",
-                  "diabetes_chol",
-                  "bloodpressure",
-                  "ra_manage",
-                  "bladder",
-                  "falling",
-                  "readmissions",
-                  "nodelays",
-                  "carequickly",
-                  "customer_service",
-                  "overallrating_care",
-                  "overallrating_plan",
-                  "coordination",
-                  "complaints_plan",
-                  "access_problems",
-                  "leave_plan",
-                  "improve",
-                  "appeals_timely",
-                  "appeals_review",
-                  "ttyt_available",
-                  "enroll_timely")
-                  
-  
-## 2014 Rating variable names
-rating.vars.2014=c("contractid",
-                   "org_type",
-                   "contract_name",
-                   "org_marketing",
-                   "org_parent",
-                   "breastcancer_screen",
-                   "rectalcancer_screen",
-                   "cv_cholscreen",
-                   "diab_cholscreen",
-                   "glaucoma_test",
-                   "flu_vaccine",
-                   "physical_health",
-                   "mental_health",
-                   "physical_monitor",
-                   "bmi_assess",
-                   "older_medication",
-                   "older_function",
-                   "older_pain",
-                   "osteo_manage",
-                   "diabetes_eye",
-                   "diabetes_kidney",
-                   "diabetes_bloodsugar",
-                   "diabetes_chol",
-                   "bloodpressure",
-                   "ra_manage",
-                   "bladder",
-                   "falling",
-                   "readmissions",
-                   "nodelays",
-                   "carequickly",
-                   "customer_service",
-                   "overallrating_care",
-                   "overallrating_plan",
-                   "coordination",
-                   "complaints_plan",
-                   "access_problems",
-                   "leave_plan",
-                   "improve",
-                   "appeals_timely",
-                   "appeals_review",
-                   "ttyt_available")
-                   
-                   
+ma.path.2009b <- paste0("data/input/ma-star-ratings/2009/2009_Part_C_Report_Card_Master_Table_2009_11_30_summary.csv")
+star.data.2009b <- read_csv(ma.path.2009b,
+                         skip=2,
+                         col_names=c("contractid","org_type","contract_name","org_marketing","partc_score"))
+star.data.2009b <- star.data.2009b %>%
+  mutate(new_contract=ifelse(partc_score=="Plan too new to be measured",1,0)) %>%
+  mutate(partc_score=plyr::mapvalues(partc_score,
+                               from=c("1 out of 5 stars","1.5 out of 5 stars",
+                                      "2 out of 5 stars","2.5 out of 5 stars",
+                                      "3 out of 5 stars","3.5 out of 5 stars",
+                                      "4 out of 5 stars","4.5 out of 5 stars",
+                                      "5 stars"), 
+                               to=c("1","1.5","2","2.5","3","3.5","4","4.5","5"))) %>%
+  mutate(partc_score=as.numeric(partc_score)) %>%
+  select(contractid, new_contract, partc_score)
 
-## 2015 Rating variable names
-rating.vars.2015=c("contractid",
-                   "org_type",
-                   "contract_name",
-                   "org_marketing",
-                   "org_parent",
-                   "rectalcancer_screen",
-                   "cv_cholscreen",
-                   "diab_cholscreen",
-                   "flu_vaccine",
-                   "physical_health",
-                   "mental_health",
-                   "physical_monitor",
-                   "bmi_assess",
-                   "specialneeds_manage",
-                   "older_medication",
-                   "older_function",
-                   "older_pain",
-                   "osteo_manage",
-                   "diabetes_eye",
-                   "diabetes_kidney",
-                   "diabetes_bloodsugar",
-                   "diabetes_chol",
-                   "bloodpressure",
-                   "ra_manage",
-                   "bladder",
-                   "falling",
-                   "readmissions",
-                   "nodelays",
-                   "carequickly",
-                   "customer_service",
-                   "overallrating_care",
-                   "overallrating_plan",
-                   "coordination",
-                   "complaints_plan",
-                   "leave_plan",
-                   "improve",
-                   "appeals_timely",
-                   "appeals_review")
-                   
-                   
-                                      
-  
-  
+star.data.2009 <- star.data.2009a %>%
+  left_join(star.data.2009b, by=c("contractid")) %>%
+  mutate(year=2009)
 
-                   
-                   
+
 ## 2010
 ma.path.2010a <- paste0("data/input/ma-star-ratings/2010/2010_Part_C_Report_Card_Master_Table_2009_11_30_domain.csv")
 star.data.2010a <- read_csv(ma.path.2010a,
@@ -494,7 +282,7 @@ star.data.2015 <- star.data.2015a %>%
 
 
 
-star.ratings <- plyr::rbind.fill(star.data.2010, star.data.2011,
+star.ratings <- plyr::rbind.fill(star.data.2008, star.data.2009, star.data.2010, star.data.2011,
                    star.data.2012, star.data.2013, star.data.2014, star.data.2015)
 star.ratings <- as_tibble(star.ratings)
 star.ratings <- star.ratings %>% 

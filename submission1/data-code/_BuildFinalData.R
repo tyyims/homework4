@@ -1,15 +1,15 @@
 
 # Meta --------------------------------------------------------------------
-# Author:        Ian McCarthy
-# Date Created:  7/8/2019
-# Date Edited:   1/24/2022
+# Author:        Taeyoung Yim
+# Date Created:  04/092024
+# Date Edited:   
 # Notes:         R file to build Medicare Advantage dataset
 
 
 
 # Preliminaries -----------------------------------------------------------
 if (!require("pacman")) install.packages("pacman")
-pacman::p_load(tidyverse, ggplot2, dplyr, lubridate, stringr, readxl, data.table, gdata)
+pacman::p_load(tidyverse, ggplot2, dplyr, lubridate, stringr, readxl, data.table, gdata, readr)
 
 
 
