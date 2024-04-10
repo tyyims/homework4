@@ -33,21 +33,27 @@ final.data <- read_rds("data/output/final_ma_data.rds")
 \vspace{.2in}
 \noindent 1. Remove all SNPs, 800-series plans, and prescription drug only plans (i.e., plans that do not offer Part C benefits). Provide a box and whisker plot showing the distribution of plan counts by county over time. Do you think that the number of plans is sufficient, too few, or too many?<br>
 ```{r,  echo = FALSE}
-# Filter out SNPs, 800-series plans, and prescription drug only plans
-filtered_data <- final.data[!(final.data$snp == 1 | grepl("^800", final.data$planid) | final.data$partc == 0), ]
+library(ggplot2)
 
-# Convert contract_date to date format
-filtered_data$contract_date <- as.Date(filtered_data$contract_date)
+# Filter the data to remove SNPs, 800-series plans, and prescription drug only plans
+filtered_data <- final.data %>%
+  filter(!(plan_type == "SNP" | grepl("^800", planid) | partd))
 
-# Count the number of plans by county and year
-plan_counts <- aggregate(plan_count ~ county + year, data = filtered_data, FUN = length)
+# Group the data by county and year and count the number of plans in each group
+plan_counts <- filtered_data %>%
+  group_by(county, year) %>%
+  summarise(plan_count = n())
 
-# Filter plan counts data to include only years from 2010 to 2015
-plan_counts <- plan_counts[plan_counts$year >= 2010 & plan_counts$year <= 2015, ]
+# Create the box and whisker plot without outliers
+boxplot_plot <- ggplot(plan_counts, aes(x = as.factor(year), y = plan_count)) +
+  geom_boxplot(outlier.shape = NA) +  # Remove outliers
+  labs(x = "Year", y = "Plan Count", title = "Distribution of Plan Counts by County Over Time") +
+  theme_minimal() +ylim(0, 40)
 
-# Box and whisker plot showing distribution of plan counts by county over time without outliers
-boxplot(plan_counts$plan_count ~ plan_counts$year, main = "Distribution of Plan Counts by County Over Time (2010-2015)",
-        xlab = "Year", ylab = "Plan Counts", col = "lightblue", border = "blue", notch = TRUE, outline = FALSE)
+# Print the plot
+print(boxplot_plot)
+
+
 ```
 
 \newpage
@@ -73,35 +79,24 @@ for (i in 1:3) {
 }
 
 ```
-
-The distribution decreases over time.
+The mean start ratings seems to increase over time. 
 
 \newpage
 \vspace{.2in}
 \noindent 3.Plot the average benchmark payment over time from 2010 through 2015. How much has the average benchmark payment risen over the years?.<br>
 ```{r,  echo = FALSE}
-# Filter the data for the years 2010 through 2015
 filtered_data <- final.data[final.data$year %in% 2010:2015, ]
 
-# Calculate the average benchmark payment for each year
 average_payment <- aggregate(payment_partc ~ year, data = filtered_data, FUN = mean)
 
-# Plot the average benchmark payment over time
 plot(average_payment$year, average_payment$payment_partc, type = "o",
      main = "Average Benchmark Payment Over Time (2010-2015)",
      xlab = "Year", ylab = "Average Benchmark Payment")
-
-# Add grid lines for better readability
 grid()
 
-# Calculate the rise in average benchmark payment over the years
 rise <- diff(average_payment$payment_partc)
 rise_over_years <- sum(rise)
-
-# Print the rise in average benchmark payment over the years
 cat("The average benchmark payment has risen by", round(rise_over_years, 2), "over the years (2010-2015).")
-
-
 ```
 
 
@@ -135,27 +130,25 @@ For the rest of the assignment, we’ll use a regression discontinuity design to
 \vspace{.2in}
 \noindent 5.Calculate the running variable underlying the star rating. Provide a table showing the number of plans that are rounded up into a 3-star, 3.5-star, 4-star, 4.5-star, and 5-star rating.<br>
 ```{r, echo = FALSE}
-# Load the necessary libraries
-library(dplyr)
+library(rdrobust)
+# Filter final.data for the year 2010
+data_2010 <- final.data %>%
+  filter(year == 2010)
 
-# Filter the data for the year 2010
-data_2010 <- final.data[final.data$year == 2010, ]
+# Calculate the running variable and associated variables for 2010 data
+running_variable_2010 <- data_2010 %>%
+  mutate(
+    score = Star_Rating - 2.25,
+    treat = (score >= 0),
+    window1 = (score >= -0.175 & score <= 0.175),
+    window2 = (score >= -0.125 & score <= 0.125),
+    mkt_share = avg_enrollment / avg_eligibles,
+    ln_share = log(mkt_share),
+    score_treat = score * treat
+  )
 
-# Calculate the running variable as the fractional part of the star rating
-data_2010$running_variable <- data_2010$Star_Rating - floor(data_2010$Star_Rating)
-
-# Define the thresholds for rounding up to different star ratings
-thresholds <- c(3, 3.5, 4, 4.5, 5)
-
-# Round up the running variable to the nearest threshold for each plan
-data_2010$rounded_rating <- cut(data_2010$running_variable, breaks = thresholds, labels = thresholds[-1])
-
-# Create a table showing the number of plans rounded up into specific star ratings
-rating_table <- table(data_2010$rounded_rating)
-
-# Display the table
-rating_table
-
+# Print summary statistics or other analyses on the calculated variables
+summary(running_variable_2010)
 
 ```
 
@@ -165,44 +158,14 @@ rating_table
 \noindent 6.Using the RD estimator with a bandwidth of 0.125, provide an estimate of the effect of receiving a 3-star versus a 2.5 star rating on enrollments. Repeat the exercise to estimate the effects at 3.5 stars, and summarize your results in a table.<br>
 
 ```{r, echo=FALSE}
-# Load the necessary libraries
-library(rdrobust)
-library(dplyr)
-
-# Filter the data for the year 2010
-data_2010 <- final.data[final.data$year == 2010, ]
-
-# Calculate the running variable as the fractional part of the star rating
-data_2010$running_variable <- data_2010$Star_Rating - floor(data_2010$Star_Rating)
-
-# Define the bandwidth
-bandwidth <- 0.125
-
-# Function to estimate treatment effect for a specific star rating
-estimate_treatment_effect <- function(star_rating) {
-  # Create a binary treatment variable indicating whether the star rating is above or below the threshold
-  data_2010$treatment <- ifelse(data_2010$Star_Rating >= star_rating, 1, 0)
-  
-  # Run regression discontinuity analysis
-  rd_result <- rdrobust(avg_enrolled ~ running_variable + treatment, h = bandwidth)
-  
-  # Extract and return the treatment effect estimate
-  return(coef(rd_result)[3])
-}
-
-# Estimating treatment effects for 3-star and 3.5-star ratings
-effect_3_star <- estimate_treatment_effect(3)
-effect_3.5_star <- estimate_treatment_effect(3.5)
-
-# Summarize results in a table
-results_table <- data.frame(
-  "Star Rating" = c("3-star", "3.5-star"),
-  "Effect on Enrollments" = c(effect_3_star, effect_3.5_star)
-)
-
-# Display the table
-print(results_table)
-
+star30 <- lm(mkt_share ~ treat + score + treat_score,
+  data = (ma.data.clean %>%
+    filter(raw_ratings >= (2.75-0.125)
+      raw_rating <= (2.75 + 0.125)
+      Star_Rating %in% c(2.5,3.0))%>%
+    mutate(treat = (Star_Rating == 3.0),
+      score = raw_rating - 2.75,
+      treat_score = treat*score)))
 ```
 
 
@@ -211,60 +174,44 @@ print(results_table)
 \noindent 7.Repeat your results for bandwidhts of 0.1, 0.12, 0.13, 0.14, and 0.15 (again for 3 and 3.5 stars). Show all of the results in a graph. How sensitive are your findings to the choice of bandwidth?<br>
 
 ```{r, echo=FALSE}
-# Load necessary libraries
-library(rdrobust)
-library(dplyr)
-library(ggplot2)
-
-# Function to estimate treatment effect for a specific star rating and bandwidth
-estimate_treatment_effect <- function(star_rating, bandwidth) {
-  # Filter the data for the year 2010
-  data_2010 <- final.data[final.data$year == 2010, ]
+# Function to estimate treatment effect using linear regression for a given bandwidth
+estimate_treatment_effect_regression <- function(star_rating, bandwidth) {
+  # Filter data around the star rating cutoff
+  data_around_cutoff <- final.data %>%
+    filter(Star_Rating >= (star_rating - bandwidth) & Star_Rating <= (star_rating + bandwidth))
   
-  # Calculate the running variable as the fractional part of the star rating
-  data_2010$running_variable <- data_2010$Star_Rating - floor(data_2010$Star_Rating)
+  # Fit linear regression model
+  model <- lm(avg_enrolled ~ Star_Rating, data = data_around_cutoff)
   
-  # Create a binary treatment variable indicating whether the star rating is above or below the threshold
-  data_2010$treatment <- ifelse(data_2010$Star_Rating >= star_rating, 1, 0)
-  
-  # Run regression discontinuity analysis
-  rd_result <- rdrobust(avg_enrolled ~ running_variable + treatment, data = data_2010, h = bandwidth)
-  
-  # Extract and return the treatment effect estimate
-  return(coef(rd_result)[3])
+  # Extract and return treatment effect estimate
+  return(coef(model)[2])
 }
 
-# Define bandwidth values
+# Define star ratings of interest
+star_ratings <- c(3, 3.5)
+
+# Define bandwidths of interest
 bandwidths <- c(0.1, 0.12, 0.13, 0.14, 0.15)
 
-# Initialize empty lists to store results
-effect_3_star_list <- list()
-effect_3.5_star_list <- list()
+# Initialize empty lists to store treatment effects
+treatment_effects_3 <- list()
+treatment_effects_3.5 <- list()
 
-# Loop through each bandwidth value
-for (bw in bandwidths) {
-  # Estimate treatment effects for 3-star and 3.5-star ratings
-  effect_3_star_list[[as.character(bw)]] <- estimate_treatment_effect(3, bw)
-  effect_3.5_star_list[[as.character(bw)]] <- estimate_treatment_effect(3.5, bw)
+# Estimate treatment effects for each bandwidth and star rating
+for (bandwidth in bandwidths) {
+  treatment_effects_3[[as.character(bandwidth)]] <- estimate_treatment_effect_regression(3, bandwidth)
+  treatment_effects_3.5[[as.character(bandwidth)]] <- estimate_treatment_effect_regression(3.5, bandwidth)
 }
 
-# Create a data frame to store results
-results_df <- data.frame(
+# Create a data frame for plotting
+results_df_regression <- data.frame(
   Bandwidth = rep(bandwidths, each = 2),
-  Star_Rating = rep(c("3-star", "3.5-star"), times = length(bandwidths)),
-  Effect_on_Enrollments = c(unlist(effect_3_star_list), unlist(effect_3.5_star_list))
+  Star_Rating = rep(c(3, 3.5), times = length(bandwidths)),
+  Treatment_Effect = c(unlist(treatment_effects_3), unlist(treatment_effects_3.5))
 )
 
-# Plot the results
-ggplot(results_df, aes(x = Bandwidth, y = Effect_on_Enrollments, color = Star_Rating)) +
-  geom_line() +
-  geom_point() +
-  labs(title = "Effect of Different Bandwidths on Enrollments",
-       x = "Bandwidth",
-       y = "Effect on Enrollments") +
-  theme_minimal() +
-  theme(legend.position = "top")
-
+# Print the results
+print(results_df_regression)
 
 ```
 I am getting "null" for all, so it is not possible to tell. 
@@ -273,85 +220,95 @@ I am getting "null" for all, so it is not possible to tell.
 \vspace{.2in}
 \noindent 8.Examine (graphically) whether contracts appear to manipulate the running variable. In other words, look at the distribution of the running variable before and after the relevent threshold values. What do you find?.<br>
 ```{r,  echo = FALSE}
-#manipulation of running variable
-# Define the relevant threshold value
-threshold <- 3  # For example, if the threshold for star ratings is 3
+# Load necessary libraries
+library(ggplot2)
 
-# Create subsets of data for scores below and above the threshold
-below_threshold <- final.data[!is.na(final.data$mean_risk) & final.data$mean_risk < threshold, ]
-above_threshold <- final.data[!is.na(final.data$mean_risk) & final.data$mean_risk >= threshold, ]
+# Define the relevant threshold values (e.g., 2.5, 3, 3.5)
+threshold_values <- c(2.5, 3, 3.5)
 
-# Plot the distribution of scores before and after the threshold using density plots
-par(mfrow = c(1, 2))  # Set plotting layout to 1 row and 2 columns
+# Initialize an empty list to store plots
+plots <- list()
 
-# Density plot for scores below the threshold
-plot(density(below_threshold$mean_risk), main = "Density Plot: Scores Below Threshold", xlab = "Mean Risk")
-
-# Check if there are enough data points for the density plot
-if (nrow(above_threshold) >= 2) {
-  # Density plot for scores above the threshold
-  plot(density(above_threshold$mean_risk), main = "Density Plot: Scores Above Threshold", xlab = "Mean Risk")
-} else {
-  # Print a message indicating insufficient data
-  print("Error when drawing above threshold.")
+# Loop through each threshold value
+for (threshold_value in threshold_values) {
+  # Filter the data for the year 2010 and around the threshold value
+  data_around_threshold <- final.data %>%
+    filter(year == 2010, Star_Rating >= (threshold_value - 0.5) & Star_Rating <= (threshold_value + 0.5))
+  
+  # Create a density plot of the running variable before and after the threshold
+  plot <- ggplot(data_around_threshold, aes(x = Star_Rating)) +
+    geom_density(fill = "skyblue", alpha = 0.5) +
+    geom_vline(xintercept = threshold_value, linetype = "dashed", color = "red") +
+    labs(title = paste("Density Plot of Running Variable around Threshold =", threshold_value),
+         x = "Star Rating", y = "Density") +
+    theme_minimal()
+  
+  # Store the plot
+  plots[[as.character(threshold_value)]] <- plot
 }
 
+# Print the plots
+for (threshold_value in threshold_values) {
+  print(plots[[as.character(threshold_value)]])
+}
+
+
 ```
-At my current stage, I cannot compare below threshold and above threshold.
+It peaks at 3, 3.5, and 4.
 \newpage
 \vspace{.2in}
 \noindent 9.Similar to question 8, examine whether plans just above the threshold values have different characteristics than contracts just below the threshold values. Use HMO and Part D status as your plan characteristics.<br>
 ```{r,  echo = FALSE}
-#covariant balance
+# Load necessary libraries
+library(ggplot2)
 
-library(dplyr)
+# Define the relevant threshold values (e.g., 2.5, 3, 3.5)
+threshold_values <- c(2.5, 3, 3.5)
 
-# Filter the data for the year 2010
-data_2010 <- final.data %>%
-  filter(year == 2010)
+# Initialize an empty list to store plots
+plots <- list()
 
-# Calculate the running variable (star rating rounded up)
-data_2010 <- data_2010 %>%
-  mutate(running_variable = ceiling(mean_risk))
-
-# Define a function to compare plan characteristics
-compare_plan_characteristics <- function(data, threshold) {
-  above_threshold <- data %>%
-    filter(running_variable > threshold)
+# Loop through each threshold value
+for (threshold_value in threshold_values) {
+  # Filter the data for the year 2010 and around the threshold value
+  data_above_threshold <- final.data %>%
+    filter(year == 2010, Star_Rating > threshold_value)
   
-  below_threshold <- data %>%
-    filter(running_variable < threshold)
+  data_below_threshold <- final.data %>%
+    filter(year == 2010, Star_Rating < threshold_value)
   
-  # Calculate the proportion of HMO and Part D plans for each group
-  above_threshold_hmo_prop <- mean(above_threshold$org_type == "HMO")
-  above_threshold_partd_prop <- mean(above_threshold$partd == "Yes")
+  # Create density plots for org_type (assumed to represent HMO status)
+  plot_hmo <- ggplot() +
+    geom_density(data = data_above_threshold, aes(x = org_type, fill = "Above Threshold"), alpha = 0.5) +
+    geom_density(data = data_below_threshold, aes(x = org_type, fill = "Below Threshold"), alpha = 0.5) +
+    labs(title = paste("Density Plot of HMO Status around Threshold =", threshold_value),
+         x = "HMO Status", y = "Density") +
+    theme_minimal() +
+    scale_fill_manual(values = c("Above Threshold" = "blue", "Below Threshold" = "red"))
   
-  below_threshold_hmo_prop <- mean(below_threshold$org_type == "HMO")
-  below_threshold_partd_prop <- mean(below_threshold$partd == "Yes")
+  # Create density plots for partd (Part D status)
+  plot_partd <- ggplot() +
+    geom_density(data = data_above_threshold, aes(x = partd, fill = "Above Threshold"), alpha = 0.5) +
+    geom_density(data = data_below_threshold, aes(x = partd, fill = "Below Threshold"), alpha = 0.5) +
+    labs(title = paste("Density Plot of Part D Status around Threshold =", threshold_value),
+         x = "Part D Status", y = "Density") +
+    theme_minimal() +
+    scale_fill_manual(values = c("Above Threshold" = "blue", "Below Threshold" = "red"))
   
-  # Create a data frame to store the results
-  comparison_results <- data.frame(
-    Threshold = threshold,
-    Plan_Type = c("HMO", "Part D"),
-    Above_Threshold_Proportion = c(above_threshold_hmo_prop, above_threshold_partd_prop),
-    Below_Threshold_Proportion = c(below_threshold_hmo_prop, below_threshold_partd_prop)
-  )
-  
-  return(comparison_results)
+  # Store the plots
+  plots[[paste("HMO", as.character(threshold_value))]] <- plot_hmo
+  plots[[paste("PartD", as.character(threshold_value))]] <- plot_partd
 }
 
-# Set threshold values (e.g., 3-star and 3.5-star)
-thresholds <- c(3, 3.5)
-
-# Compare plan characteristics for each threshold value
-comparison_results <- purrr::map_dfr(thresholds, ~compare_plan_characteristics(data_2010, .x))
-
-# Print comparison results
-print(comparison_results)
+# Print the plots
+for (plot_name in names(plots)) {
+  print(plots[[plot_name]])
+}
 
 ```
 
 \newpage
 \vspace{.2in}
 \noindent 10.Summarize your findings from 5-9. What is the effect of increasing a star rating on enrollments? Briefly explain your results.<br>
-At my current stage, it is difficult to tell the effect of increasing a star rating since I faced error while executing some codes. Some data seem to be empty, so I need to figure that our first before actually answering this question. 
+
+Number 5, 6 and 7 clearly seems to be wrong at this point, so it is hard to clearly tell what is happening. My guess is that it should have positive impact on enrollment rate.
