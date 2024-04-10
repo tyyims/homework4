@@ -34,26 +34,20 @@ final.data <- read_rds("data/output/final_ma_data.rds")
 \noindent 1. Remove all SNPs, 800-series plans, and prescription drug only plans (i.e., plans that do not offer Part C benefits). Provide a box and whisker plot showing the distribution of plan counts by county over time. Do you think that the number of plans is sufficient, too few, or too many?<br>
 ```{r,  echo = FALSE}
 library(ggplot2)
-
-# Filter the data to remove SNPs, 800-series plans, and prescription drug only plans
 filtered_data <- final.data %>%
   filter(!(plan_type == "SNP" | grepl("^800", planid) | partd))
 
-# Group the data by county and year and count the number of plans in each group
 plan_counts <- filtered_data %>%
   group_by(county, year) %>%
   summarise(plan_count = n())
 
-# Create the box and whisker plot without outliers
 boxplot_plot <- ggplot(plan_counts, aes(x = as.factor(year), y = plan_count)) +
-  geom_boxplot(outlier.shape = NA) +  # Remove outliers
+  geom_boxplot(fill = "#4C72B0", color = "#4C72B0",alpha = 0.8,outlier.shape = NA) +  
   labs(x = "Year", y = "Plan Count", title = "Distribution of Plan Counts by County Over Time") +
   theme_minimal() +ylim(0, 40)
 
-# Print the plot
+
 print(boxplot_plot)
-
-
 ```
 
 \newpage
