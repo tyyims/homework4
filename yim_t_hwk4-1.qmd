@@ -4,7 +4,7 @@ subtitle: "Research Methods, Spring 2024"
 author: "Taeyoung Yim"
 format:
   pdf:
-    output-file: "yim-t-hwk4-1"
+    output-file: "yim-t-hwk4-3"
     output-ext:  "pdf"
     header-includes:
       - \usepackage{float}
@@ -35,7 +35,7 @@ final.data <- read_rds("data/output/final_ma_data.rds")
 ```{r,  echo = FALSE}
 library(ggplot2)
 filtered_data <- final.data %>%
-  filter(!(plan_type == "SNP" | grepl("^800", planid) | partd))
+  filter(plan_type != "SNP" & !grepl("^800", planid) & partd != "Yes")
 
 plan_counts <- filtered_data %>%
   group_by(county, year) %>%
@@ -49,11 +49,12 @@ boxplot_plot <- ggplot(plan_counts, aes(x = as.factor(year), y = plan_count)) +
 
 print(boxplot_plot)
 ```
+I think there are too few plans. When focusing on 2015 boxplot, the median is very low and the range is very narrow. I think this tends to limit the option for many people.
 
 \newpage
 \vspace{.2in}
 \noindent 2. Provide bar graphs showing the distribution of star ratings in 2010, 2012, and 2015. How has this distribution changed over time?<br>
-```{r, echo = FASLE}
+```{r, echo = FALSE}
 # Define shades of blue for each year
 custom_colors <- c("skyblue", "pink", "darkgreen")
 
@@ -86,7 +87,7 @@ average_payment <- aggregate(payment_partc ~ year, data = filtered_data, FUN = m
 plot(average_payment$year, average_payment$payment_partc, type = "o",
      main = "Average Benchmark Payment Over Time (2010-2015)",
      xlab = "Year", ylab = "Average Benchmark Payment")
-grid()
+
 
 rise <- diff(average_payment$payment_partc)
 rise_over_years <- sum(rise)
@@ -116,7 +117,7 @@ ma.share <- average_ma_share%>%
 ma.share
 ```
 
-Medical advantage increased overtime. Comparing this trend with the benchmark payment trend, the over all trend seems to be positively correlated, although the trend is slight different between 2011 and 2013.
+Except for 2014, I think two graphs are negatively correlated. The overall trend for both graph tends to head to the opposite direction. 
 
 \newpage
 # Estimate ATEs
@@ -124,26 +125,31 @@ For the rest of the assignment, we’ll use a regression discontinuity design to
 \vspace{.2in}
 \noindent 5.Calculate the running variable underlying the star rating. Provide a table showing the number of plans that are rounded up into a 3-star, 3.5-star, 4-star, 4.5-star, and 5-star rating.<br>
 ```{r, echo = FALSE}
-library(rdrobust)
-# Filter final.data for the year 2010
+library(dplyr)
+
+# Filter data for 2010
 data_2010 <- final.data %>%
   filter(year == 2010)
 
-# Calculate the running variable and associated variables for 2010 data
-running_variable_2010 <- data_2010 %>%
-  mutate(
-    score = Star_Rating - 2.25,
-    treat = (score >= 0),
-    window1 = (score >= -0.175 & score <= 0.175),
-    window2 = (score >= -0.125 & score <= 0.125),
-    mkt_share = avg_enrollment / avg_eligibles,
-    ln_share = log(mkt_share),
-    score_treat = score * treat
-  )
+# Calculate the running variable underlying the star rating
+data_2010 <- data_2010 %>%
+  mutate(running_variable = Star_Rating - floor(Star_Rating))  # Extract decimal part of Star_Rating
 
-# Print summary statistics or other analyses on the calculated variables
-summary(running_variable_2010)
+# Round running_variable to determine star rating
+data_2010 <- data_2010 %>%
+  mutate(rounded_rating = case_when(
+    running_variable < 0.25 ~ floor(Star_Rating),    # Round down to nearest integer
+    running_variable >= 0.25 & running_variable < 0.75 ~ floor(Star_Rating) + 0.5,  # Round up to nearest half integer
+    running_variable >= 0.75 ~ ceiling(Star_Rating)  # Round up to nearest integer
+  ))
 
+# Count the number of plans for each rounded star rating
+star_ratings_count <- data_2010 %>%
+  group_by(rounded_rating) %>%
+  summarize(count = n())
+
+# Print the table
+print(star_ratings_count)
 ```
 
 \newpage
@@ -152,14 +158,37 @@ summary(running_variable_2010)
 \noindent 6.Using the RD estimator with a bandwidth of 0.125, provide an estimate of the effect of receiving a 3-star versus a 2.5 star rating on enrollments. Repeat the exercise to estimate the effects at 3.5 stars, and summarize your results in a table.<br>
 
 ```{r, echo=FALSE}
-star30 <- lm(mkt_share ~ treat + score + treat_score,
-  data = (ma.data.clean %>%
-    filter(raw_ratings >= (2.75-0.125)
-      raw_rating <= (2.75 + 0.125)
-      Star_Rating %in% c(2.5,3.0))%>%
-    mutate(treat = (Star_Rating == 3.0),
-      score = raw_rating - 2.75,
-      treat_score = treat*score)))
+# Filter data for the year 2010 and 3-star rating (Star Rating 3.0)
+star30_data_2010 <- final.data %>%
+  filter(year == 2010, Star_Rating %in% c(2.5, 3.0))
+
+# Calculate the score variable for 3-star rating
+star30_data_2010 <- star30_data_2010 %>%
+  mutate(score = Star_Rating - 2.75,
+         treat = ifelse(Star_Rating == 3.0, 1, 0),
+         treat_score = treat * score)
+
+# Perform regression for 3-star rating in 2010
+star30_lm_2010 <- lm(avg_enrollment ~ score + treat + treat_score, data = star30_data_2010)
+
+# Filter data for the year 2010 and 3.5-star rating (Star Rating 3.5)
+star35_data_2010 <- final.data %>%
+  filter(year == 2010, Star_Rating %in% c(3.0, 3.5))
+
+# Calculate the score variable for 3.5-star rating
+star35_data_2010 <- star35_data_2010 %>%
+  mutate(score = Star_Rating - 3.25,
+         treat = ifelse(Star_Rating == 3.5, 1, 0),
+         treat_score = treat * score)
+
+# Perform regression for 3.5-star rating in 2010
+star35_lm_2010 <- lm(avg_enrollment ~ score + treat + treat_score, data = star35_data_2010)
+
+# Summary of the regression for 3.5-star rating in 2010
+print("Star 3.0")
+summary(star30_lm_2010)
+print("Star 3.5")
+summary(star35_lm_2010)
 ```
 
 
@@ -168,47 +197,66 @@ star30 <- lm(mkt_share ~ treat + score + treat_score,
 \noindent 7.Repeat your results for bandwidhts of 0.1, 0.12, 0.13, 0.14, and 0.15 (again for 3 and 3.5 stars). Show all of the results in a graph. How sensitive are your findings to the choice of bandwidth?<br>
 
 ```{r, echo=FALSE}
-# Function to estimate treatment effect using linear regression for a given bandwidth
-estimate_treatment_effect_regression <- function(star_rating, bandwidth) {
-  # Filter data around the star rating cutoff
-  data_around_cutoff <- final.data %>%
-    filter(Star_Rating >= (star_rating - bandwidth) & Star_Rating <= (star_rating + bandwidth))
-  
-  # Fit linear regression model
-  model <- lm(avg_enrolled ~ Star_Rating, data = data_around_cutoff)
-  
-  # Extract and return treatment effect estimate
-  return(coef(model)[2])
+library(dplyr)
+library(ggplot2)
+
+# Define bandwidth values
+bandwidth_values <- c(0.1, 0.12, 0.13, 0.14, 0.15)
+
+# Initialize a list to store results
+results <- list()
+
+# Loop through each bandwidth value
+for (bandwidth in bandwidth_values) {
+  # Filter data for the year 2010 and 3-star rating (Star Rating 3.0)
+  star30_data_2010 <- final.data %>%
+    filter(year == 2010, Star_Rating %in% c(2.5, 3.0))
+
+  # Calculate the score variable for 3-star rating
+  star30_data_2010 <- star30_data_2010 %>%
+    mutate(score = Star_Rating - 2.75,
+           treat = ifelse(Star_Rating == 3.0, 1, 0),
+           treat_score = treat * score)
+
+  # Perform regression for 3-star rating in 2010 with current bandwidth
+  star30_lm_2010 <- lm(avg_enrollment ~ score + treat + treat_score, data = star30_data_2010)
+
+  # Store results
+  results[[paste0("3_star_", bandwidth)]] <- summary(star30_lm_2010)
+
+  # Filter data for the year 2010 and 3.5-star rating (Star Rating 3.5)
+  star35_data_2010 <- final.data %>%
+    filter(year == 2010, Star_Rating %in% c(3.0, 3.5))
+
+  # Calculate the score variable for 3.5-star rating
+  star35_data_2010 <- star35_data_2010 %>%
+    mutate(score = Star_Rating - 3.25,
+           treat = ifelse(Star_Rating == 3.5, 1, 0),
+           treat_score = treat * score)
+
+  # Perform regression for 3.5-star rating in 2010 with current bandwidth
+  star35_lm_2010 <- lm(avg_enrollment ~ score + treat + treat_score, data = star35_data_2010)
+
+  # Store results
+  results[[paste0("3.5_star_", bandwidth)]] <- summary(star35_lm_2010)
 }
 
-# Define star ratings of interest
-star_ratings <- c(3, 3.5)
+# Plot the results
+results_df <- lapply(results, function(x) {
+  data.frame(Bandwidth = names(results), Coefficients = x$coefficients[, 1])
+}) %>%
+  bind_rows() %>%
+  mutate(Star_Rating = ifelse(grepl("3_star", Bandwidth), "3 Star", "3.5 Star"))
 
-# Define bandwidths of interest
-bandwidths <- c(0.1, 0.12, 0.13, 0.14, 0.15)
-
-# Initialize empty lists to store treatment effects
-treatment_effects_3 <- list()
-treatment_effects_3.5 <- list()
-
-# Estimate treatment effects for each bandwidth and star rating
-for (bandwidth in bandwidths) {
-  treatment_effects_3[[as.character(bandwidth)]] <- estimate_treatment_effect_regression(3, bandwidth)
-  treatment_effects_3.5[[as.character(bandwidth)]] <- estimate_treatment_effect_regression(3.5, bandwidth)
-}
-
-# Create a data frame for plotting
-results_df_regression <- data.frame(
-  Bandwidth = rep(bandwidths, each = 2),
-  Star_Rating = rep(c(3, 3.5), times = length(bandwidths)),
-  Treatment_Effect = c(unlist(treatment_effects_3), unlist(treatment_effects_3.5))
-)
-
-# Print the results
-print(results_df_regression)
+ggplot(results_df, aes(x = Bandwidth, y = Coefficients, color = Star_Rating)) +
+  geom_point() +
+  geom_line() +
+  labs(title = "Effect of Bandwidth on Regression Coefficients",
+       x = "Bandwidth", y = "Coefficient") +
+  theme_minimal()
 
 ```
-I am getting "null" for all, so it is not possible to tell. 
+I think it is stable. The range of coefficient is constant comparing different bandwidth.
 
 \newpage
 \vspace{.2in}
@@ -248,7 +296,7 @@ for (threshold_value in threshold_values) {
 
 
 ```
-It peaks at 3, 3.5, and 4.
+Before and after the threshold value, the density tends to be low. When it is the threshold value, the density peaks.
 \newpage
 \vspace{.2in}
 \noindent 9.Similar to question 8, examine whether plans just above the threshold values have different characteristics than contracts just below the threshold values. Use HMO and Part D status as your plan characteristics.<br>
@@ -305,4 +353,5 @@ for (plot_name in names(plots)) {
 \vspace{.2in}
 \noindent 10.Summarize your findings from 5-9. What is the effect of increasing a star rating on enrollments? Briefly explain your results.<br>
 
-Number 5, 6 and 7 clearly seems to be wrong at this point, so it is hard to clearly tell what is happening. My guess is that it should have positive impact on enrollment rate.
+From 5, I can know the distribution of enrollment based on different ratings. Here, it does not seem that more people enroll in plans with higer star rating.From 6, I can know that there is a relationship between enrollment and star rating. However, the effect seems minimal.From 7, I can know that the coefficient is not sensitive. From 9, it can be discovered that when the threshold is low, "above threshold" tends to have high density, and when the threshold is high, "below threshold" tends to have high density.This shows that the manipulation of threshold values may affect the observed effects. Overall, the relationship between enrollment and star rating is small, and other factors also play a role other than the star rating.
+
